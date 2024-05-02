@@ -20,22 +20,65 @@ function generateNumbers(n) {
   return numString;
 }
 
-function isValidTimer(strtext) {
-  if (strtext.search("timer") >= 0) {
-    const numRegex = new RegExp('100|[1-9][0-9]|[0-9]');
-    if (numRegex.test(strtext)) {
-      const number = numRegex.exec(strtext)[0];
-      if (strtext.search("minutos") >= 0) {
-        const name = strtext.substring(strtext.search("minutos") + 7);
-        return { valid: true, format: 'M', value: number, name };
-      } else if (strtext.search("segundos") >= 0) {
-        const name = strtext.substring(strtext.search("segundos") + 8);
-        return { valid: true, format: 'S', value: number, name };
-      }
+function isTimerValid(strtext) {
+
+  function invalid() {
+    return { valid: false, value: null, name: null };
+  }
+
+  function getNumberFromSubstring(str, s, e) {
+    const subStr = str.substring(s, e);
+    console.log(subStr);
+    return Number(subStr.match(/\d+/)[0]);
+  }
+
+  function clearString(str) {
+    let newStr = str;
+
+    newStr = newStr.replace("timer", "");
+    newStr = newStr.replace("e meio", "30 S");
+    newStr = newStr.replace("um", "1");
+    newStr = newStr.replace("meia hora", "30 M");
+    newStr = newStr.replaceAll("minutos", "M");
+    newStr = newStr.replaceAll("minuto", "M");
+    newStr = newStr.replaceAll("segundos", "S");
+    newStr = newStr.replaceAll("segundo", "S");
+
+    return newStr;
+  }
+
+  const startI = strtext.search("timer");
+
+  if (startI < 0) {
+    return invalid();
+  }
+
+  let newStr = clearString(strtext.substring(startI));
+  console.log(newStr);
+
+  const mI = newStr.search('M');
+  const sI = newStr.search('S');
+
+  if (mI < 0 && sI < 0) {
+    return invalid();
+  }
+
+  let currentI = 0;
+  let time = 0;
+
+  if (mI < 0) {
+    time = time + getNumberFromSubstring(newStr, currentI, sI);
+    currentI = sI + 1;
+  } else {
+    time = time + 60 * getNumberFromSubstring(newStr, currentI, mI);
+    currentI = mI + 1;
+    if (sI >= 0 && sI >= mI) {
+      time = time + getNumberFromSubstring(newStr, currentI, sI);
+      currentI = sI + 1;
     }
   }
 
-  return { valid: false, format: null, value: null, name: null };
+  return { valid: true, value: time, name: newStr.substring(currentI) };
 }
 
 const nameDOM = document.querySelector("#nome");
@@ -48,12 +91,7 @@ function startTimer(timer) {
   window.clearInterval(timerID);
   localStorage.setItem("startTime", Math.floor(Date.now() / 1000));
 
-  let segundos = 0;
-  if (timer.format == "S") {
-    segundos = timer.value;
-  } else {
-    segundos = timer.value * 60;
-  }
+  let segundos = timer.value;
 
   timerWorkflow(segundos)
   timerID = window.setInterval(() => timerWorkflow(segundos), 500)
@@ -90,17 +128,15 @@ function checkTime(i) {
 }
 
 function testSpeech() {
-  testBtn.disabled = true;
-  testBtn.textContent = 'Test in progress';
 
   // To ensure case consistency while checking with the returned output text
   diagnosticPara.textContent = '...diagnostic messages';
 
   let numbersGenerated = generateNumbers(100);
-  var grammar = '#JSGF V1.0; grammar phrase; public <phrase> = timer <number> (minutos {M} | segundos {S}); public <number> = ' + numbersGenerated;
+  var grammar = '#JSGF V1.0; grammar phrase; public <phrase> = timer [de] (<number> | um) (minutos | segundos | minuto | segundo) [(e <number> (segundo | segundos))| e meio]; public <number> = ' + numbersGenerated;
   var recognition = new SpeechRecognition();
   var speechRecognitionList = new SpeechGrammarList();
-  speechRecognitionList.addFromString(grammar, 1);
+  speechRecognitionList.addFromString(grammar, 10);
   recognition.grammars = speechRecognitionList;
   recognition.lang = 'pt-BR';
   recognition.interimResults = false;
@@ -124,7 +160,7 @@ function testSpeech() {
     console.log('Confidence: ' + event.results[0][0].confidence);
 
 
-    const timer = isValidTimer(speechResult);
+    const timer = isTimerValid(speechResult);
     if (timer.valid) {
       startTimer(timer);
     }
